@@ -231,8 +231,15 @@
     .ticket-body { padding: 10px 12px; }
     .ticket-item {
       display: flex; align-items: center; gap: 7px;
+      width: 100%;
+      background: none;
+      border: none;
+      border-bottom: 1px solid rgba(255,255,255,.04);
+      font: inherit;
+      text-align: left;
       font-size: 13px; color: var(--muted);
-      padding: 4px 0; border-bottom: 1px solid rgba(255,255,255,.04);
+      padding: 4px 0;
+      cursor: pointer;
     }
     .ticket-item:last-child { border: none; }
     .qty {
@@ -245,8 +252,72 @@
       border: none; border-radius: 6px; color: white;
       font-size: 11px; font-weight: 800; letter-spacing: .6px;
       padding: 7px; width: calc(100% - 20px);
-      text-align: center; cursor: pointer;
+      text-align: center;
     }
+    .kds-board {
+      display: grid;
+      grid-template-columns: 210px 1fr;
+      gap: 12px;
+      align-items: start;
+    }
+    @media (max-width: 720px) { .kds-board { grid-template-columns: 1fr; } }
+    .summary {
+      background: #171b22;
+      border-radius: 12px;
+      padding: 14px 14px 8px;
+    }
+    .summary-label {
+      color: #9aa6b8;
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 1.2px;
+      text-transform: uppercase;
+      margin-bottom: 12px;
+    }
+    .summary-row {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      margin-bottom: 8px;
+      color: white;
+      font-size: 14px;
+      font-weight: 700;
+    }
+    .summary-count {
+      width: 28px;
+      color: #ffc857;
+      font-size: 18px;
+      font-weight: 800;
+    }
+    .ticket { border: 3px solid transparent; }
+    .ticket.selected { border-color: #ffc857; }
+    .ticket-pick {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px 0;
+      color: #9aa6b8;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: .4px;
+      text-transform: uppercase;
+    }
+    .pick {
+      width: 16px;
+      height: 16px;
+      border-radius: 4px;
+      border: 2px solid #f3f6fb;
+      background: transparent;
+      color: #17191d;
+      font-size: 12px;
+      font-weight: 800;
+      line-height: 12px;
+      cursor: pointer;
+    }
+    .ticket.selected .pick { background: #ffc857; border-color: #ffc857; }
+    .ticket-item { cursor: pointer; }
+    .ticket-item.done { text-decoration: line-through; opacity: .5; }
+    .done-mark { margin-left: auto; color: #22c55e; font-weight: 800; }
 
     /* ── HOW IT WORKS ── */
     .steps {
@@ -398,52 +469,47 @@
 <section id="preview" class="section">
   <p class="section-label">In Action</p>
   <h2 class="section-title">What it looks like in your kitchen</h2>
-  <p class="section-sub">Tickets go yellow, then red, as the food sits. Tap an item to cross it off. The tally under the ticket is what the cook still has to make.</p>
+  <p class="section-sub">Check one ticket, or several. The summary adds up what is still to make. Tap an item on a ticket to mark it done.</p>
 
   <div class="kds-preview">
     <div class="kds-topbar">
       <span>KDS · Table View</span>
       <span class="live-dot">Live</span>
     </div>
-    <div class="tickets-row">
-      <div class="ticket">
-        <div class="ticket-hdr a"><span>T·04</span><span>8 min</span></div>
-        <div class="ticket-body">
-          <div class="ticket-item" style="text-decoration:line-through;opacity:.55;"><span class="qty">1×</span>Cheeseburger</div>
-          <div class="ticket-item"><span class="qty">1×</span>Cheeseburger</div>
-          <div class="ticket-item"><span class="qty">1×</span>Fries</div>
-          <div class="ticket-item"><span class="qty">2×</span>Soda</div>
+    <div class="kds-board">
+      <aside class="summary" aria-live="polite">
+        <p class="summary-label" id="summary-label">2 tickets</p>
+        <div id="summary-rows"></div>
+      </aside>
+      <div class="tickets-row">
+        <div class="ticket selected" data-ticket="Table 4">
+          <div class="ticket-hdr a"><span>Table 4</span><span>8 min</span></div>
+          <div class="ticket-pick"><button class="pick" type="button" aria-label="Summarize Table 4">✓</button> In summary</div>
+          <div class="ticket-body">
+            <button class="ticket-item done" type="button" data-name="Cheeseburger" data-count="1"><span class="qty">1</span>Cheeseburger<span class="done-mark">✓</span></button>
+            <button class="ticket-item" type="button" data-name="Cheeseburger" data-count="1"><span class="qty">1</span>Cheeseburger</button>
+            <button class="ticket-item" type="button" data-name="Fries" data-count="1"><span class="qty">1</span>Fries</button>
+          </div>
+          <div class="ticket-done">BUMP</div>
         </div>
-        <div class="ticket-done">BUMP</div>
-      </div>
-      <div class="ticket">
-        <div class="ticket-hdr r"><span>T·07</span><span>12 min</span></div>
-        <div class="ticket-body">
-          <div class="ticket-item"><span class="qty">1×</span>Ribeye Steak</div>
-          <div class="ticket-item"><span class="qty">1×</span>Caesar Salad</div>
-          <div class="ticket-item"><span class="qty">2×</span>Mashed Potatoes</div>
-          <div class="ticket-item"><span class="qty">1×</span>Bread</div>
-          <div class="ticket-item"><span class="qty">3×</span>Water</div>
+        <div class="ticket selected" data-ticket="Table 7">
+          <div class="ticket-hdr r"><span>Table 7</span><span>12 min</span></div>
+          <div class="ticket-pick"><button class="pick" type="button" aria-label="Summarize Table 7">✓</button> In summary</div>
+          <div class="ticket-body">
+            <button class="ticket-item" type="button" data-name="Ribeye" data-count="1"><span class="qty">1</span>Ribeye</button>
+            <button class="ticket-item" type="button" data-name="Fries" data-count="2"><span class="qty">2</span>Fries</button>
+          </div>
+          <div class="ticket-done">BUMP</div>
         </div>
-        <div class="ticket-done">BUMP</div>
-      </div>
-      <div class="ticket">
-        <div class="ticket-hdr g"><span>T·09</span><span>2 min</span></div>
-        <div class="ticket-body">
-          <div class="ticket-item"><span class="qty">1×</span>Chicken Wings</div>
-          <div class="ticket-item"><span class="qty">2×</span>Nachos</div>
-          <div class="ticket-item"><span class="qty">1×</span>Quesadilla</div>
+        <div class="ticket" data-ticket="Table 9">
+          <div class="ticket-hdr g"><span>Table 9</span><span>2 min</span></div>
+          <div class="ticket-pick"><button class="pick" type="button" aria-label="Summarize Table 9"></button> In summary</div>
+          <div class="ticket-body">
+            <button class="ticket-item" type="button" data-name="Wings" data-count="1"><span class="qty">1</span>Wings</button>
+            <button class="ticket-item" type="button" data-name="Nachos" data-count="2"><span class="qty">2</span>Nachos</button>
+          </div>
+          <div class="ticket-done">BUMP</div>
         </div>
-        <div class="ticket-done">BUMP</div>
-      </div>
-      <div class="ticket">
-        <div class="ticket-hdr g"><span>T·11</span><span>1 min</span></div>
-        <div class="ticket-body">
-          <div class="ticket-item"><span class="qty">3×</span>Burger</div>
-          <div class="ticket-item"><span class="qty">2×</span>Side Salad</div>
-          <div class="ticket-item"><span class="qty">1×</span>Lemonade</div>
-        </div>
-        <div class="ticket-done">BUMP</div>
       </div>
     </div>
   </div>
@@ -493,6 +559,57 @@
     </div>
   </div>
 </footer>
+
+<script>
+  const board = document.querySelector('.kds-board');
+  const summaryLabel = document.getElementById('summary-label');
+  const summaryRows = document.getElementById('summary-rows');
+
+  function renderSummary() {
+    const selected = [...board.querySelectorAll('.ticket.selected')];
+    const counts = new Map();
+    selected.forEach((ticket) => {
+      ticket.querySelectorAll('.ticket-item:not(.done)').forEach((item) => {
+        const name = item.dataset.name;
+        counts.set(name, (counts.get(name) || 0) + Number(item.dataset.count));
+      });
+    });
+    summaryLabel.textContent = selected.length === 1 ? selected[0].dataset.ticket : selected.length + ' tickets';
+    summaryRows.innerHTML = [...counts.entries()].map(([name, count]) =>
+      '<div class="summary-row"><span class="summary-count">' + count + '</span><span>' + name + '</span></div>'
+    ).join('');
+  }
+
+  board.addEventListener('click', (event) => {
+    const pick = event.target.closest('.pick');
+    if (pick) {
+      const ticket = pick.closest('.ticket');
+      const selected = board.querySelectorAll('.ticket.selected');
+      if (ticket.classList.contains('selected') && selected.length === 1) return;
+      ticket.classList.toggle('selected');
+      pick.textContent = ticket.classList.contains('selected') ? '✓' : '';
+      renderSummary();
+      return;
+    }
+    const item = event.target.closest('.ticket-item');
+    if (!item) return;
+    item.classList.toggle('done');
+    let mark = item.querySelector('.done-mark');
+    if (item.classList.contains('done')) {
+      if (!mark) {
+        mark = document.createElement('span');
+        mark.className = 'done-mark';
+        mark.textContent = '✓';
+        item.appendChild(mark);
+      }
+    } else if (mark) {
+      mark.remove();
+    }
+    renderSummary();
+  });
+
+  renderSummary();
+</script>
 
 </body>
 </html>
