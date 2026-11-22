@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Better Clover KDS</title>
+  <style>
+    :root { color-scheme: dark; }
+    body { margin: 0; font-family: "Avenir Next", "Segoe UI", sans-serif; background: #121418; color: #f7f8fa; }
+    main { max-width: 760px; margin: 0 auto; padding: 32px 20px 64px; }
+    h1 { font-size: 32px; margin-bottom: 8px; }
+    p { color: #c5ceda; line-height: 1.45; }
+    form, .card { background: #1b2029; border-radius: 16px; padding: 16px; margin-top: 16px; }
+    label { display: block; margin-top: 12px; color: #9aa6b8; font-size: 13px; font-weight: 700; }
+    input, select { width: 100%; box-sizing: border-box; margin-top: 6px; background: #10141b; color: white; border: 0; border-radius: 10px; padding: 12px; font-size: 16px; }
+    .row { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 16px; }
+    button { min-height: 46px; border: 0; border-radius: 12px; padding: 0 16px; font-weight: 800; font-size: 16px; cursor: pointer; }
+    button.primary { background: #0f6b3c; color: white; }
+    button.secondary { background: #2a3140; color: white; }
+    .message { margin-top: 14px; }
+    code { color: #ffc857; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Better Clover KDS</h1>
+    <p>Log in with the restaurant's Clover account. This browser remembers it, and the kitchen screen stays signed in until someone logs out.</p>
+    <div class="row">
+      <button class="primary" id="cloverLogin" type="button">Log in with Clover</button>
+    </div>
+    <div id="addresses"></div>
+    <form id="signup">
+      <label>Restaurant name <input id="restaurantName" autocomplete="organization" /></label>
+      <label>Email <input id="signupEmail" type="email" autocomplete="username" /></label>
+      <label>Password <input id="signupPassword" type="password" autocomplete="new-password" /></label>
+      <div class="row">
+        <button class="primary" type="submit">Create restaurant</button>
+      </div>
+    </form>
+    <form id="login">
+      <label>Email <input id="loginEmail" type="email" autocomplete="username" /></label>
+      <label>Password <input id="loginPassword" type="password" autocomplete="current-password" /></label>
+      <div class="row">
+        <button class="primary" type="submit">Log in</button>
+        <button class="secondary" id="logout" type="button">Log out</button>
+      </div>
+      <p class="message" id="session"></p>
+    </form>
+    <form id="form">
+      <label>Kitchen PIN <input id="pin" autocomplete="off" /></label>
+      <label>Environment
+        <select id="environment">
+          <option value="sandbox">Sandbox</option>
+          <option value="na">United States and Canada</option>
+          <option value="eu">Europe</option>
+          <option value="la">Latin America</option>
+        </select>
+      </label>
+      <label>Merchant ID <input id="merchantId" autocomplete="off" /></label>
+      <label>Access token <input id="accessToken" type="password" placeholder="Leave blank to keep the saved token" autocomplete="off" /></label>
+      <label>Orders from the last hours <input id="lookbackHours" inputmode="numeric" value="18" /></label>
+      <label>App ID, for OAuth <input id="appId" autocomplete="off" /></label>
+      <label>App secret <input id="appSecret" type="password" placeholder="Leave blank to keep the saved secret" autocomplete="off" /></label>
+      <label>Site URL <input id="publicUrl" placeholder="https://kitchen.example.com" autocomplete="off" /></label>
+      <label>Webhook auth code <input id="webhookAuth" autocomplete="off" /></label>
+      <div class="row">
+        <button class="primary" type="submit">Save</button>
+        <button class="secondary" id="test" type="button">Test connection</button>
+        <button class="secondary" id="oauth" type="button">Connect with Clover</button>
+      </div>
+      <p class="message" id="message"></p>
+      <p class="message" id="verification"></p>
+    </form>
+  </main>
+  <script>
+    const fields = ['pin', 'environment', 'merchantId', 'lookbackHours', 'appId', 'publicUrl', 'webhookAuth'];
+    const pinKey = 'betterCloverKdsPin';
+    const sessionKey = 'betterCloverKdsSession';
+
+    function savedSession() {
+      return localStorage.getItem(sessionKey) || '';
+    }
+
+    function rememberSession(token) {
+      if (token) localStorage.setItem(sessionKey, token);
+    }
+
+    async function api(path, options = {}) {
+      const typed = document.querySelector('#pin').value;
+      const token = savedSession();
+      const headers = {
+        Accept: 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : { 'X-KDS-Pin': sessionStorage.getItem(pinKey) || typed }),
+        ...(options.headers || {}),
+      };
+      const response = await fetch(path, { ...options, headers });
+      const body = await response.json().catch(() => ({}));
+      if (response.status === 401) sessionStorage.removeItem(pinKey);
+      if (!response.ok) throw new Error(body.message || body.error || 'The kitchen server could not complete that.');
+      if (typed) sessionStorage.setItem(pinKey, typed);
+      return body;
+    }
+
+    function payload() {
+      const data = {};
+      fields.forEach((id) => { data[id] = document.querySelector('#' + id).value; });
+      data.accessToken = document.querySelector('#accessToken').value;
+      data.appSecret = document.querySelector('#appSecret').value;
+      return data;
+    }
+
+    async function load() {
+      const savedPin = sessionStorage.getItem(pinKey);
+      if (savedPin) document.querySelector('#pin').value = savedPin;
+      const params = new URLSearchParams(location.search);
+      const message = document.querySelector('#message');
+      if (params.get('connected')) message.textContent = 'Clover connected. Open Better Clover KDS on the tablets.';
+      if (params.get('error')) message.textContent = params.get('error');
+      try {
+        const status = await api(savedSession() ? '/api/restaurant' : '/api/status');
+        const session = document.querySelector('#session');
+        session.textContent = status.restaurantName ? `Logged in to ${status.restaurantName}` : '';
+        fields.forEach((id) => {
+          if (status[id] != null && status[id] !== '') document.querySelector('#' + id).value = status[id];
+        });
+        if (status.hasToken) document.querySelector('#accessToken').placeholder = 'Token saved';
+        if (status.hasSecret) document.querySelector('#appSecret').placeholder = 'Secret saved';
+        const addresses = (status.addresses || []).map((address) => `<div><code>${address}</code></div>`).join('');
+        document.querySelector('#addresses').innerHTML = addresses
+          ? `<p>On each tablet, set the kitchen server to:</p>${addresses}`
+          : '';
+        if (status.verificationCode) {
+          document.querySelector('#verification').textContent = `Webhook verification code: ${status.verificationCode}`;
+        }
+      } catch (error) {
+        message.textContent = error.message;
+      }
+    }
+
+    document.querySelector('#form').addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const message = document.querySelector('#message');
+      try {
+        const path = savedSession() ? '/api/restaurant' : '/api/config';
+        await api(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload()) });
+        message.textContent = 'Saved.';
+        await load();
+      } catch (error) {
+        message.textContent = error.message;
+      }
+    });
+
+    document.querySelector('#test').addEventListener('click', async () => {
+      const message = document.querySelector('#message');
+      message.textContent = 'Checking Clover…';
+      try {
+        const result = await api('/api/test', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload()) });
+        message.textContent = result.connected
+          ? `Connected to ${result.merchantName}. ${result.orderCount} tickets in the window.`
+          : result.error;
+      } catch (error) {
+        message.textContent = error.message;
+      }
+    });
+
+    document.querySelector('#oauth').addEventListener('click', async () => {
+      try {
+        const path = savedSession() ? '/api/restaurant' : '/api/config';
+        await api(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload()) });
+        const token = savedSession();
+        location.href = token ? `/oauth/start?session=${encodeURIComponent(token)}` : '/oauth/start';
+      } catch (error) {
+        document.querySelector('#message').textContent = error.message;
+      }
+    });
+
+    document.querySelector('#signup').addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const message = document.querySelector('#message');
+      try {
+        const response = await fetch('/api/signup', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+          body: JSON.stringify({
+            restaurantName: document.querySelector('#restaurantName').value,
+            email: document.querySelector('#signupEmail').value,
+            password: document.querySelector('#signupPassword').value,
+          }),
+        });
+        const body = await response.json();
+        if (!response.ok) throw new Error(body.message || 'Could not create the restaurant.');
+        message.textContent = `${body.account.restaurantName} is ready. Log in with that email.`;
+      } catch (error) {
+        message.textContent = error.message;
+      }
+    });
+
+    document.querySelector('#login').addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const message = document.querySelector('#message');
+      try {
+        const response = await fetch('/api/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+          body: JSON.stringify({
+            email: document.querySelector('#loginEmail').value,
+            password: document.querySelector('#loginPassword').value,
+          }),
+        });
+        const body = await response.json();
+        if (!response.ok) throw new Error(body.message || 'Could not log in.');
+        rememberSession(body.token);
+        document.querySelector('#loginPassword').value = '';
+        message.textContent = '';
+        await load();
+      } catch (error) {
+        message.textContent = error.message;
+      }
+    });
+
+    document.querySelector('#logout').addEventListener('click', async () => {
+      const token = savedSession();
+      if (token) {
+        await fetch('/api/logout', { method: 'POST', headers: { Authorization: `Bearer ${token}` } }).catch(() => {});
+      }
+      localStorage.removeItem(sessionKey);
+      document.querySelector('#session').textContent = '';
+      await load();
+    });
+
+    document.querySelector('#cloverLogin').addEventListener('click', () => {
+      const token = savedSession();
+      location.href = token ? `/oauth/start?session=${encodeURIComponent(token)}` : '/oauth/start';
+    });
+
+    const hash = new URLSearchParams(location.hash.replace(/^#/, ''));
+    if (hash.get('session')) {
+      rememberSession(hash.get('session'));
+      history.replaceState(null, '', location.pathname + location.search);
+    }
+
+    load();
+  </script>
+</body>
+</html>

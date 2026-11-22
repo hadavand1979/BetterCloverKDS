@@ -1,24 +1,43 @@
 {
   "expo": {
-    "name": "better-clover-kds",
+    "name": "Better Clover KDS",
     "slug": "better-clover-kds",
     "version": "1.0.0",
-    "orientation": "portrait",
+    "orientation": "default",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "dark",
+    "backgroundColor": "#121418",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.betterclover.kds",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      },
+      "buildNumber": "2"
     },
     "android": {
+      "package": "com.betterclover.kds",
+      "permissions": [
+        "VIBRATE"
+      ],
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
+        "backgroundColor": "#111827",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
-      }
+      },
+      "versionCode": 2
     },
     "web": {
-      "favicon": "./assets/favicon.png"
-    }
+      "favicon": "./assets/favicon.png",
+      "name": "Better Clover KDS",
+      "backgroundColor": "#121418"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "ba18d953-da09-4cc5-b279-b10753370658"
+      }
+    },
+    "owner": "hadavand1979"
   }
 }

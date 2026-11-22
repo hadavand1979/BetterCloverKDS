@@ -39,3 +39,11 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+# kitchen server
+server/node_modules/
+server/data/
+
+# desktop shell
+desktop/node_modules/
+desktop/dist/

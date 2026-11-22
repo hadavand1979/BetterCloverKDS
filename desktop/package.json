@@ -1,0 +1,42 @@
+{
+  "name": "better-clover-kds-desktop",
+  "productName": "Better Clover KDS",
+  "private": true,
+  "version": "1.0.0",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "pack": "electron-builder"
+  },
+  "devDependencies": {
+    "electron": "33.4.11",
+    "electron-builder": "25.1.8"
+  },
+  "build": {
+    "appId": "com.betterclover.kds",
+    "productName": "Better Clover KDS",
+    "asar": true,
+    "files": [
+      "main.js",
+      "preload.js"
+    ],
+    "extraResources": [
+      {
+        "from": "../dist",
+        "to": "dist"
+      }
+    ],
+    "mac": {
+      "category": "public.app-category.business",
+      "target": ["dmg"]
+    },
+    "win": {
+      "target": ["nsis"]
+    },
+    "linux": {
+      "category": "Utility",
+      "target": ["AppImage", "deb"],
+      "maintainer": "Better Clover KDS"
+    }
+  }
+}
