@@ -4,7 +4,8 @@ import { loadBumps, saveBumps } from './storage';
 
 const { createDemoOrders, DEMO_LABELS } = require('./demo');
 const { fetchOrders, fetchKitchenEvents, fetchMerchantName, fetchPrinterLabels, environmentFor, describeNetworkError } = require('./clover');
-const { reconcileBumps, freezeClosedTimes, collectLabels, applyKitchenStatus, orderRevision } = require('./tally');
+const { reconcileBumps, freezeClosedTimes, collectLabels, applyKitchenStatus, orderRevision, orderLookbackHours, arrivedTicketIds } = require('./tally');
+const { playChime, prepareChime } = require('./chime');
 
 function mergeLabels(catalog, orders) {
   return [...new Set([...(catalog || []), ...collectLabels(orders)])].sort((a, b) => a.localeCompare(b));
@@ -35,6 +36,11 @@ export function useKitchen(settings) {
   const bumpsRef = useRef({});
   const ordersRef = useRef([]);
   const settingsRef = useRef(settings);
+  const metaRef = useRef({ key: '', name: '', labels: [], at: 0 });
+  const pauseUntilRef = useRef(0);
+  const accountKeyRef = useRef(`${settings.mode}:${settings.environment}:${settings.merchantId}`);
+  const heldOrdersRef = useRef(null);
+  const filterKeyRef = useRef('');
   settingsRef.current = settings;
   bumpsRef.current = bumps;
   ordersRef.current = orders;
@@ -95,44 +101,48 @@ export function useKitchen(settings) {
       throw new Error('Enter the Clover merchant ID and access token in Settings.');
     }
     const env = environmentFor(current.environment);
-    const [nameResult, ordersResult, labelsResult, eventsResult] = await Promise.allSettled([
-      fetchMerchantName({ apiBase: env.api, merchantId, token }),
-      fetchOrders({
-        apiBase: env.api,
-        merchantId,
-        token,
-        lookbackHours: current.lookbackHours,
-      }),
-      fetchPrinterLabels({ apiBase: env.api, merchantId, token }),
-      fetchKitchenEvents({
-        apiBase: env.api,
-        merchantId,
-        token,
-        lookbackHours: current.lookbackHours,
-      }),
-    ]);
-    if (ordersResult.status === 'rejected') throw ordersResult.reason;
-    const name = nameResult.status === 'fulfilled' ? nameResult.value : '';
-    const events = eventsResult.status === 'fulfilled' ? eventsResult.value : [];
-    const nextOrders = applyKitchenStatus(ordersResult.value, events, current);
-    const catalog = labelsResult.status === 'fulfilled' ? labelsResult.value : [];
+    const lookbackHours = orderLookbackHours(current);
+    const orders = await fetchOrders({
+      apiBase: env.api,
+      merchantId,
+      token,
+      lookbackHours,
+    });
+    const events = await fetchKitchenEvents({
+      apiBase: env.api,
+      merchantId,
+      token,
+      lookbackHours,
+    });
+    const metaKey = `${current.environment}:${merchantId}`;
+    const meta = metaRef.current.key === metaKey ? metaRef.current : { key: metaKey, name: '', labels: [], at: 0 };
+    const nextOrders = applyKitchenStatus(orders, events, current);
     const reconciled = reconcileBumps(nextOrders, bumpsRef.current);
     const frozen = freezeClosedTimes(nextOrders, reconciled.bumps, current, Date.now());
     if (reconciled.changed || frozen.changed) setBumps(frozen.bumps);
     setOrders(nextOrders);
-    setLabels(mergeLabels(catalog, nextOrders));
-    setMerchantName(name || merchantId);
+    setLabels(mergeLabels(meta.labels, nextOrders));
+    setMerchantName(meta.name || merchantId);
     setError('');
+    if (meta.key !== metaRef.current.key || Date.now() - meta.at > 10 * 60 * 1000) {
+      const name = await fetchMerchantName({ apiBase: env.api, merchantId, token });
+      const catalog = await fetchPrinterLabels({ apiBase: env.api, merchantId, token });
+      metaRef.current = { key: metaKey, name: name || meta.name, labels: catalog, at: Date.now() };
+      setLabels(mergeLabels(catalog, nextOrders));
+      setMerchantName(metaRef.current.name || merchantId);
+    }
   }
 
   useEffect(() => {
     let stopped = false;
     async function tick() {
-      if (stopped || inflightRef.current) return;
+      if (stopped || inflightRef.current || Date.now() < pauseUntilRef.current) return;
       inflightRef.current = true;
       try {
         await refresh();
+        pauseUntilRef.current = 0;
       } catch (err) {
+        if (err && err.status === 429) pauseUntilRef.current = Date.now() + (err.retryAfterMs || 20_000);
         setError(settingsRef.current.mode === 'clover' ? describeNetworkError(err) : err.message);
       } finally {
         inflightRef.current = false;
@@ -140,31 +150,48 @@ export function useKitchen(settings) {
       }
     }
     tick();
-    const id = setInterval(tick, 4000);
+    const id = setInterval(tick, 8000);
     return () => {
       stopped = true;
       clearInterval(id);
     };
-  }, [settings.mode, settings.environment, settings.merchantId, settings.accessToken, settings.serverUrl, settings.pin, settings.lookbackHours]);
+  }, [settings.mode, settings.environment, settings.merchantId, settings.accessToken, settings.serverUrl, settings.pin, settings.lookbackHours, settings.closedWindow]);
 
   useEffect(() => {
-    if (!orders.length) return;
+    if (settings.chime) prepareChime();
+  }, [settings.chime]);
+
+  useEffect(() => {
+    if (loading) return;
+    const accountKey = `${settings.mode}:${settings.environment}:${settings.merchantId}`;
+    if (accountKey !== accountKeyRef.current) {
+      accountKeyRef.current = accountKey;
+      primedRef.current = false;
+      seenRef.current = new Set();
+      heldOrdersRef.current = orders;
+    }
+    if (!primedRef.current && heldOrdersRef.current && orders === heldOrdersRef.current) return;
+    const filterKey = JSON.stringify([
+      settings.mode,
+      settings.stationFilter || '',
+      ...(Array.isArray(settings.printerLabels) ? settings.printerLabels : []),
+    ]);
+    if (filterKey !== filterKeyRef.current) {
+      filterKeyRef.current = filterKey;
+      primedRef.current = false;
+      seenRef.current = new Set();
+    }
     if (!primedRef.current) {
-      orders.forEach((order) => seenRef.current.add(order.id));
+      arrivedTicketIds(seenRef.current, orders, bumps, settings, false);
       primedRef.current = true;
+      heldOrdersRef.current = null;
       return;
     }
-    const fresh = orders.filter((order) => {
-      if (seenRef.current.has(order.id)) return false;
-      const mark = bumpsRef.current[order.id];
-      if (mark?.status === 'bumped') return false;
-      if (order.kitchenDone && mark?.status !== 'reopened' && !mark?.reopened) return false;
-      if (String(order.state || 'open') === 'locked' && mark?.status !== 'reopened' && !mark?.reopened) return false;
-      return true;
-    });
-    orders.forEach((order) => seenRef.current.add(order.id));
-    if (fresh.length && settings.haptics) pulse([0, 70, 50, 70]);
-  }, [orders, settings.haptics]);
+    const fresh = arrivedTicketIds(seenRef.current, orders, bumps, settings, true);
+    if (!fresh.length) return;
+    if (settings.haptics) pulse([0, 70, 50, 70]);
+    if (settings.chime) playChime();
+  }, [orders, bumps, loading, settings]);
 
   async function bump(ticket) {
     const revision = orderRevision(ticket);

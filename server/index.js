@@ -31,6 +31,7 @@ const DEFAULT_CONFIG = {
 
 const boardCache = new Map();
 let merchantCache = { id: '', name: '', at: 0 };
+let labelCache = { id: '', labels: [], at: 0 };
 const refreshing = new Map();
 const oauthStates = new Map();
 
@@ -62,12 +63,18 @@ function readBumps() {
   return saved;
 }
 
+function deleteCached(prefix) {
+  [...boardCache.keys()].forEach((key) => {
+    if (key === prefix || String(key).startsWith(`${prefix}:`)) boardCache.delete(key);
+  });
+}
+
 function clearCache() {
-  boardCache.delete('legacy');
+  deleteCached('legacy');
 }
 
 function clearBoardCache(key) {
-  boardCache.delete(key);
+  deleteCached(key);
 }
 
 function lanAddresses() {
@@ -138,7 +145,7 @@ async function ensureToken(config, save) {
   return refreshing.get(key);
 }
 
-async function buildBoardFrom(config, bumps, saveConfig, saveBumps) {
+async function buildBoardFrom(config, bumps, saveConfig, saveBumps, lookbackHours) {
   const ready = await ensureToken(config, saveConfig);
   if (!ready.merchantId || !ready.accessToken) {
     return {
@@ -160,25 +167,29 @@ async function buildBoardFrom(config, bumps, saveConfig, saveBumps) {
     });
     merchantCache = { id: ready.merchantId, name: merchantName, at: Date.now() };
   }
-  const [fetched, labels, events] = await Promise.all([
-    fetchOrders({
+  const requested = Math.min(72, Math.max(0, Number(lookbackHours) || 0));
+  const hours = requested ? Math.min(72, Math.max(Number(ready.lookbackHours) || 18, requested)) : ready.lookbackHours;
+  const fetched = await fetchOrders({
+    apiBase: env.api,
+    merchantId: ready.merchantId,
+    token: ready.accessToken,
+    lookbackHours: hours,
+  });
+  const events = await fetchKitchenEvents({
+    apiBase: env.api,
+    merchantId: ready.merchantId,
+    token: ready.accessToken,
+    lookbackHours: hours,
+  });
+  let labels = labelCache.id === ready.merchantId ? labelCache.labels : [];
+  if (labelCache.id !== ready.merchantId || Date.now() - labelCache.at > 10 * 60 * 1000) {
+    labels = await fetchPrinterLabels({
       apiBase: env.api,
       merchantId: ready.merchantId,
       token: ready.accessToken,
-      lookbackHours: ready.lookbackHours,
-    }),
-    fetchPrinterLabels({
-      apiBase: env.api,
-      merchantId: ready.merchantId,
-      token: ready.accessToken,
-    }),
-    fetchKitchenEvents({
-      apiBase: env.api,
-      merchantId: ready.merchantId,
-      token: ready.accessToken,
-      lookbackHours: ready.lookbackHours,
-    }).catch(() => []),
-  ]);
+    });
+    labelCache = { id: ready.merchantId, labels, at: Date.now() };
+  }
   const orders = applyKitchenStatus(fetched, events);
   const reconciled = reconcileBumps(orders, bumps);
   const frozen = freezeClosedTimes(orders, reconciled.bumps, {}, Date.now());
@@ -195,7 +206,7 @@ async function buildBoardFrom(config, bumps, saveConfig, saveBumps) {
 
 async function cachedBoard(key, load, fallbackBumps) {
   const hit = boardCache.get(key);
-  if (hit && Date.now() - hit.at < 3000) return hit.board;
+  if (hit && Date.now() - hit.at < 8000) return hit.board;
   try {
     const board = await load();
     if (board.connected) boardCache.set(key, { at: Date.now(), board });
@@ -212,17 +223,17 @@ async function cachedBoard(key, load, fallbackBumps) {
   }
 }
 
-function legacyBoard() {
+function legacyBoard(lookbackHours) {
   return cachedBoard(
-    'legacy',
-    () => buildBoardFrom(readConfig(), readBumps(), (next) => writeJson(configFile, next), (next) => writeJson(bumpsFile, next)),
+    `legacy:${lookbackHours || 0}`,
+    () => buildBoardFrom(readConfig(), readBumps(), (next) => writeJson(configFile, next), (next) => writeJson(bumpsFile, next), lookbackHours),
     readBumps,
   );
 }
 
-function accountBoard(account) {
+function accountBoard(account, lookbackHours) {
   return cachedBoard(
-    account.id,
+    `${account.id}:${lookbackHours || 0}`,
     () => buildBoardFrom(
       account.config || {},
       account.bumps || {},
@@ -234,6 +245,7 @@ function accountBoard(account) {
         account.bumps = next;
         accounts.saveAccount(account);
       },
+      lookbackHours,
     ),
     () => account.bumps || {},
   );
@@ -418,13 +430,14 @@ app.post('/api/test', async (req, res) => {
 });
 
 app.get('/api/board', async (req, res) => {
+  const lookbackHours = Math.min(72, Math.max(0, Number(req.query.lookbackHours) || 0));
   const account = accountFromRequest(req);
   if (account) {
-    const board = await accountBoard(account);
+    const board = await accountBoard(account, lookbackHours);
     return res.json({ ...board, restaurantName: account.restaurantName });
   }
   if (!pinOk(req)) return sendAuthError(res);
-  return res.json(await legacyBoard());
+  return res.json(await legacyBoard(lookbackHours));
 });
 
 function markedDone(current) {

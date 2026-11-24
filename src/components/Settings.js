@@ -1,7 +1,10 @@
 import { useEffect, useState } from 'react';
+import * as Application from 'expo-application';
+import Constants from 'expo-constants';
 import {
   ActivityIndicator,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -11,9 +14,11 @@ import {
   View,
 } from 'react-native';
 
+const { installedAppVersion } = require('../appVersion');
 const { ENVIRONMENTS, testClover, describeNetworkError } = require('../clover');
 const { testServer, loginServer } = require('../serverClient');
 const { colors } = require('../theme');
+const { playChime } = require('../chime');
 
 const MODES = [
   { id: 'demo', label: 'Sample tickets' },
@@ -76,8 +81,10 @@ export function Settings({ visible, settings, labels = [], onClose, onSave, onRe
       stationFilter: String(draft.stationFilter || '').trim(),
       printerLabels: [...new Set((draft.printerLabels || []).map((label) => String(label).replace(/\s+/g, ' ').trim()).filter(Boolean))],
       lookbackHours: numberInRange(draft.lookbackHours, 18, 1, 72),
+      closedWindow: draft.closedWindow === 'hours' ? 'hours' : 'today',
       warningMinutes,
       lateMinutes,
+      chime: Boolean(draft.chime),
       password: '',
     };
     if (next.mode === 'server' && String(draft.password || '').trim()) {
@@ -174,7 +181,6 @@ export function Settings({ visible, settings, labels = [], onClose, onSave, onRe
               </View>
               <Field label="Merchant ID" value={draft.merchantId} onChangeText={(value) => update('merchantId', value)} autoCapitalize="characters" />
               <Field label="Access token" value={draft.accessToken} onChangeText={(value) => update('accessToken', value)} secureTextEntry />
-              <Field label="Show orders from the last hours" value={draft.lookbackHours} onChangeText={(value) => update('lookbackHours', value)} keyboardType="number-pad" />
             </View>
           ) : null}
 
@@ -193,6 +199,29 @@ export function Settings({ visible, settings, labels = [], onClose, onSave, onRe
           ) : null}
 
           <View style={styles.card}>
+            <Text style={styles.label}>Closed tickets</Text>
+            <Text style={styles.help}>
+              Today shows tickets closed since midnight. Hours shows closed tickets from the last number of hours, which can include yesterday.
+            </Text>
+            <View style={styles.modes}>
+              <Pressable
+                style={[styles.mode, draft.closedWindow !== 'hours' && styles.modeOn]}
+                onPress={() => update('closedWindow', 'today')}
+                accessibilityRole="button"
+              >
+                <Text style={[styles.modeText, draft.closedWindow !== 'hours' && styles.modeTextOn]}>Today</Text>
+              </Pressable>
+              <Pressable
+                style={[styles.mode, draft.closedWindow === 'hours' && styles.modeOn]}
+                onPress={() => update('closedWindow', 'hours')}
+                accessibilityRole="button"
+              >
+                <Text style={[styles.modeText, draft.closedWindow === 'hours' && styles.modeTextOn]}>Hours</Text>
+              </Pressable>
+            </View>
+            {draft.closedWindow === 'hours' ? (
+              <Field label="Show closed tickets from the last hours" value={draft.lookbackHours} onChangeText={(value) => update('lookbackHours', value)} keyboardType="number-pad" />
+            ) : null}
             <Field label="Yellow at minutes" value={draft.warningMinutes} onChangeText={(value) => update('warningMinutes', value)} keyboardType="number-pad" />
             <Field label="Red at minutes" value={draft.lateMinutes} onChangeText={(value) => update('lateMinutes', value)} keyboardType="number-pad" />
             <Text style={styles.label}>Printer labels</Text>
@@ -229,7 +258,22 @@ export function Settings({ visible, settings, labels = [], onClose, onSave, onRe
               onChangeText={(value) => update('stationFilter', value)}
               placeholder="burger, steak"
             />
-            <Toggle label="Count sides and add-ons in the tally" value={draft.includeModifiers} onValueChange={(value) => update('includeModifiers', value)} />
+            <Text style={styles.label}>Summary</Text>
+            <Text style={styles.help}>
+              Turn this on to count the items under a main item, such as lettuce, tomato, red onion, salsa, sour cream, and queso under nachos. Turn it off to count the main item only.
+            </Text>
+            <Toggle label="Include items under the main item" value={draft.includeModifiers} onValueChange={(value) => update('includeModifiers', value)} />
+            <Text style={styles.help}>
+              The chime plays on this screen when a new ticket appears. A ticket with no items for the labels selected above stays quiet. Save after turning it on.
+            </Text>
+            <Toggle
+              label="Chime when a new ticket arrives"
+              value={Boolean(draft.chime)}
+              onValueChange={(value) => {
+                update('chime', value);
+                if (value) playChime();
+              }}
+            />
             <Toggle label="Vibrate when a new ticket arrives" value={draft.haptics} onValueChange={(value) => update('haptics', value)} />
           </View>
 
@@ -242,6 +286,7 @@ export function Settings({ visible, settings, labels = [], onClose, onSave, onRe
           <Pressable style={styles.save} onPress={save} accessibilityRole="button">
             <Text style={styles.saveText}>Save</Text>
           </Pressable>
+          <Text style={styles.version}>{installedAppVersion(Application, Constants, Platform.OS)}</Text>
         </ScrollView>
       </View>
     </Modal>
@@ -338,4 +383,5 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   saveText: { color: colors.white, fontWeight: '800', fontSize: 18 },
+  version: { color: '#9aa6b8', fontSize: 14, textAlign: 'center', marginTop: 8 },
 });

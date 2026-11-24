@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { prepareTicket, tallyLines, reconcileBumps, freezeClosedTimes, boardTickets, settingsForBoard, isInstructionModifier, orderRevision, applyKitchenStatus } = require('./tally');
+const { prepareTicket, tallyLines, reconcileBumps, freezeClosedTimes, boardTickets, settingsForBoard, isInstructionModifier, orderRevision, applyKitchenStatus, orderLookbackHours, arrivedTicketIds } = require('./tally');
 const { createDemoOrders } = require('./demo');
 const { normalizeOrder } = require('./clover');
 
@@ -41,6 +41,19 @@ test('Burger and Burgers count as one group', () => {
     { name: 'Burgers', qty: 2, modifiers: [] },
   ]);
   assert.deepEqual(rows, [{ name: 'Burgers', count: 3 }]);
+});
+
+test('summary can count nachos alone or with the items under them', () => {
+  const lines = [{
+    name: 'Nachos',
+    qty: 1,
+    modifiers: ['Lettuce', 'Tomato', 'Red Onion', 'Salsa', 'Sour Cream', 'Queso', 'NO onion'].map((name) => ({ name })),
+  }];
+  assert.deepEqual(
+    tallyLines(lines, { includeModifiers: true }).map((row) => row.name),
+    ['Nachos', 'Lettuce', 'Tomato', 'Red Onion', 'Salsa', 'Sour Cream', 'Queso'],
+  );
+  assert.deepEqual(tallyLines(lines, { includeModifiers: false }).map((row) => row.name), ['Nachos']);
 });
 
 test('turning off sides leaves the plate counts', () => {
@@ -177,6 +190,14 @@ test('marking one item done leaves the ticket open and crosses that item off', (
   assert.equal(marked.active.length, 1);
   assert.equal(marked.active[0].lines.find((line) => line.id === 'wings').done, true);
   assert.equal(marked.active[0].lines.find((line) => line.id === 'steak').done, false);
+  assert.deepEqual(marked.active[0].tally.map((row) => row.name), ['Sirloin']);
+  assert.deepEqual(
+    tallyLines([
+      { name: 'Hot Pepper Cheese Balls', qty: 1, done: true, modifiers: [{ name: 'Ranch' }] },
+      { name: 'Applemen Special Burger', qty: 1, modifiers: [{ name: 'Fries' }] },
+    ]).map((row) => row.name),
+    ['Applemen Special Burger', 'Fries'],
+  );
   const changed = reconcileBumps(
     [{ ...order, lines: [order.lines[1]] }],
     { table: { status: 'bumped', at: 9, revision: 'old', done: { wings: 5_000, steak: 6_000 } } },
@@ -271,6 +292,26 @@ test('hidden Clover orders are left off the board', () => {
   assert.equal(locked.state, 'locked');
 });
 
+test('today keeps closed tickets from this calendar day and hours can include yesterday', () => {
+  const now = new Date(2026, 10, 22, 10, 0, 0).getTime();
+  const yesterday = new Date(2026, 10, 21, 20, 0, 0).getTime();
+  const today = new Date(2026, 10, 22, 9, 0, 0).getTime();
+  const line = { name: 'Burger', qty: 1, modifiers: [] };
+  const orders = [
+    { id: 'old', state: 'locked', title: 'Yesterday', createdTime: yesterday, modifiedTime: yesterday, lines: [line] },
+    { id: 'open', state: 'open', title: 'Still open', createdTime: yesterday, modifiedTime: yesterday, lines: [line] },
+    { id: 'fresh', state: 'locked', title: 'Today', createdTime: today, modifiedTime: today, lines: [line] },
+  ];
+  const day = boardTickets(orders, {}, { closedWindow: 'today' }, now);
+  assert.deepEqual(day.closed.map((ticket) => ticket.id), ['fresh']);
+  assert.deepEqual(day.active.map((ticket) => ticket.id), ['open']);
+  const hours = boardTickets(orders, {}, { closedWindow: 'hours', lookbackHours: 18 }, now);
+  assert.deepEqual(hours.closed.map((ticket) => ticket.id), ['fresh', 'old']);
+  const late = new Date(2026, 10, 22, 23, 0, 0).getTime();
+  assert.equal(orderLookbackHours({ closedWindow: 'today', lookbackHours: 18 }, late), 23);
+  assert.equal(orderLookbackHours({ closedWindow: 'hours', lookbackHours: 18 }, late), 18);
+});
+
 test('closed orders stay off the open board until they are made active', () => {
   const open = {
     id: 'o',
@@ -304,4 +345,42 @@ test('closed orders stay off the open board until they are made active', () => {
   const bumped = boardTickets([open], { o: { status: 'bumped', at: 9 } });
   assert.equal(bumped.active.length, 0);
   assert.equal(bumped.closed[0].bumped, true);
+});
+
+test('a new open ticket chimes once, and another station stays quiet', () => {
+  const burger = {
+    id: 'b',
+    state: 'open',
+    title: 'Table 4',
+    createdTime: 2,
+    modifiedTime: 2,
+    lines: [{ name: 'Burger', labels: ['Grill'], modifiers: [] }],
+  };
+  const drink = {
+    id: 'd',
+    state: 'open',
+    title: 'Bar',
+    createdTime: 1,
+    modifiedTime: 1,
+    lines: [{ name: 'Soda', labels: ['Bar'], modifiers: [] }],
+  };
+  const seen = new Set();
+  assert.deepEqual(arrivedTicketIds(seen, [], {}, { printerLabels: ['Grill'] }, false), []);
+  assert.deepEqual(arrivedTicketIds(seen, [burger], {}, { printerLabels: ['Grill'] }, true), ['b']);
+  assert.deepEqual(arrivedTicketIds(seen, [burger], {}, { printerLabels: ['Grill'] }, true), []);
+
+  const grill = new Set();
+  assert.deepEqual(arrivedTicketIds(grill, [drink], {}, { printerLabels: ['Grill'] }, false), []);
+  assert.equal(grill.has('d'), false);
+  const withBurger = {
+    ...drink,
+    lines: [...drink.lines, { name: 'Burger', labels: ['Grill'], modifiers: [] }],
+  };
+  assert.deepEqual(arrivedTicketIds(grill, [withBurger], {}, { printerLabels: ['Grill'] }, true), ['d']);
+
+  const closed = new Set();
+  const locked = { ...burger, id: 'c', state: 'locked', title: 'Paid' };
+  assert.deepEqual(arrivedTicketIds(closed, [locked], {}, {}, false), []);
+  assert.deepEqual(arrivedTicketIds(closed, [locked], { c: { status: 'reopened', at: 5 } }, {}, true), []);
+  assert.deepEqual(arrivedTicketIds(seen, [burger], { b: { status: 'bumped', at: 9 } }, {}, true), []);
 });

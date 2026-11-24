@@ -103,7 +103,35 @@ function normalizeOrder(order) {
   };
 }
 
+let cloverPauseUntil = 0;
+let cloverNextAt = 0;
+let cloverQueue = Promise.resolve();
+
+function rateLimitWaitMs(retryAfter) {
+  const seconds = Number(retryAfter);
+  if (Number.isFinite(seconds) && seconds > 0) return Math.min(60_000, Math.round(seconds * 1000));
+  return 20_000;
+}
+
+function enqueueClover(task) {
+  const run = cloverQueue.then(async () => {
+    const wait = Math.max(cloverPauseUntil, cloverNextAt) - Date.now();
+    if (wait > 0) await new Promise((resolve) => setTimeout(resolve, wait));
+    try {
+      return await task();
+    } finally {
+      cloverNextAt = Date.now() + 350;
+    }
+  });
+  cloverQueue = run.then(() => undefined, () => undefined);
+  return run;
+}
+
 async function cloverFetch(url, token) {
+  return enqueueClover(() => cloverFetchNow(url, token));
+}
+
+async function cloverFetchNow(url, token) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 20000);
   try {
@@ -124,6 +152,10 @@ async function cloverFetch(url, token) {
     if (!response.ok) {
       const failure = new Error(body?.message || `Clover returned ${response.status}`);
       failure.status = response.status;
+      if (response.status === 429) {
+        failure.retryAfterMs = rateLimitWaitMs(response.headers.get('retry-after'));
+        cloverPauseUntil = Date.now() + failure.retryAfterMs;
+      }
       throw failure;
     }
     return body;
@@ -146,7 +178,7 @@ async function fetchMerchantName({ apiBase, merchantId, token }) {
     const body = await cloverFetch(new URL(`/v3/merchants/${encodeURIComponent(merchantId)}`, apiBase), token);
     return body?.name || '';
   } catch (error) {
-    if (error.status === 401) throw error;
+    if (error.status === 401 || error.status === 429) throw error;
     return '';
   }
 }
@@ -184,8 +216,18 @@ async function fetchOrders({ apiBase, merchantId, token, lookbackHours }) {
   return orders.map(normalizeOrder).filter(Boolean);
 }
 
+const kitchenEventCache = new Map();
+
+function eventKey(event) {
+  if (event && event.id) return String(event.id);
+  return [event && event.orderId, event && event.lineItemId, event && event.type, event && event.createdTime].join(':');
+}
+
 async function fetchKitchenEvents({ apiBase, merchantId, token, lookbackHours }) {
-  const since = Date.now() - Number(lookbackHours || 18) * 60 * 60 * 1000;
+  const key = `${apiBase}:${merchantId}`;
+  const cached = kitchenEventCache.get(key);
+  const lookbackStart = Date.now() - Number(lookbackHours || 18) * 60 * 60 * 1000;
+  const since = cached ? Math.max(lookbackStart, cached.at - 60_000) : lookbackStart;
   const events = [];
   let offset = 0;
   try {
@@ -200,9 +242,17 @@ async function fetchKitchenEvents({ apiBase, merchantId, token, lookbackHours })
       offset += batch.length;
     }
   } catch (error) {
-    return events;
+    if (error.status === 429) throw error;
+    return cached ? cached.events.filter((event) => Number(event.createdTime) >= lookbackStart) : events;
   }
-  return events;
+  const merged = new Map();
+  [...(cached ? cached.events : []), ...events].forEach((event) => {
+    if (Number(event.createdTime) && Number(event.createdTime) < lookbackStart) return;
+    merged.set(eventKey(event), event);
+  });
+  const next = [...merged.values()];
+  kitchenEventCache.set(key, { at: Date.now(), events: next });
+  return next;
 }
 
 async function fetchPrinterLabels({ apiBase, merchantId, token }) {
@@ -216,7 +266,7 @@ async function fetchPrinterLabels({ apiBase, merchantId, token }) {
     const source = onPrinters.length ? onPrinters : tags;
     names.push(...source.map((tag) => tag && tag.name));
   } catch (error) {
-    // A label lookup must not block the kitchen tickets.
+    if (error.status === 429) throw error;
   }
   if (!names.length) {
     try {
@@ -227,7 +277,7 @@ async function fetchPrinterLabels({ apiBase, merchantId, token }) {
         asList(printer && printer.tags).forEach((tag) => names.push(tag && tag.name));
       });
     } catch (error) {
-      // Printers are a second way to read the same labels.
+      if (error.status === 429) throw error;
     }
   }
   return labelNames(names);
@@ -260,6 +310,7 @@ function describeNetworkError(error) {
   }
   if (error && error.status === 401) return 'Clover refused the access token. Create a new token and paste it again.';
   if (error && error.status === 403) return 'This token can read the merchant, but orders need the Read orders permission.';
+  if (error && error.status === 429) return 'Clover asked this screen to wait. The tickets stay on the board.';
   return message || 'Could not reach Clover.';
 }
 
@@ -274,4 +325,5 @@ module.exports = {
   testClover,
   environmentFor,
   describeNetworkError,
+  rateLimitWaitMs,
 };

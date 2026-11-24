@@ -51,7 +51,9 @@ async function request(settings, path, options = {}) {
 }
 
 function fetchServerBoard(settings) {
-  return request(settings, '/api/board');
+  const { orderLookbackHours } = require('./tally');
+  const hours = orderLookbackHours(settings);
+  return request(settings, `/api/board?lookbackHours=${encodeURIComponent(hours)}`);
 }
 
 function testServer(settings) {

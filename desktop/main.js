@@ -6,11 +6,13 @@ const net = require('net');
 const path = require('path');
 
 const kiosk = !process.argv.includes('--windowed');
+const windowPort = Number(process.env.KDS_WINDOW_PORT || 39271);
 const devUrl = process.env.KDS_DEV_URL || '';
 let sleepBlocker = null;
 let kitchenServer = null;
 let staticServer = null;
 
+app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
 app.commandLine.appendSwitch('disable-renderer-backgrounding');
 app.commandLine.appendSwitch('disable-background-timer-throttling');
 app.commandLine.appendSwitch('touch-events', 'enabled');
@@ -32,6 +34,7 @@ function contentType(file) {
     case '.jpg':
     case '.jpeg': return 'image/jpeg';
     case '.svg': return 'image/svg+xml';
+    case '.wav': return 'audio/wav';
     case '.ico': return 'image/x-icon';
     case '.webp': return 'image/webp';
     case '.woff': return 'font/woff';
@@ -75,7 +78,7 @@ function startStaticServer(root) {
         });
       });
     });
-    server.listen(0, '127.0.0.1', () => resolve(server));
+    server.listen(windowPort, '127.0.0.1', () => resolve(server));
     server.on('error', reject);
   });
 }

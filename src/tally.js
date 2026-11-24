@@ -69,12 +69,13 @@ function tallyLines(lines, options = {}) {
   }
 
   lines.forEach((line) => {
-    if (line.countItem === false) return;
+    if (line.done || line.countItem === false) return;
     add(line.name, lineQuantity(line), 'item');
   });
 
   if (includeModifiers) {
     lines.forEach((line) => {
+      if (line.done) return;
       const qty = lineQuantity(line);
       (line.modifiers || []).forEach((mod) => {
         const name = typeof mod === 'string' ? mod : mod.name;
@@ -352,7 +353,7 @@ function reconcileBumps(orders, bumps) {
   return { bumps: next, changed };
 }
 
-function withDone(ticket, order, mark) {
+function withDone(ticket, order, mark, settings = {}) {
   const local = mark && mark.done && typeof mark.done === 'object' ? mark.done : {};
   const status = order.kdsStatus || {};
   const lines = (ticket.lines || []).map((line) => {
@@ -360,7 +361,12 @@ function withDone(ticket, order, mark) {
     const ready = statusName(status[id]) === 'ready';
     return { ...line, done: Boolean(id && (local[id] || ready)) };
   });
-  return { ...ticket, lines, groups: groupLines(lines) };
+  return {
+    ...ticket,
+    lines,
+    groups: groupLines(lines),
+    tally: tallyLines(lines, { includeModifiers: settings.includeModifiers !== false }),
+  };
 }
 
 function settingsForBoard(settings = {}) {
@@ -372,7 +378,29 @@ function settingsForBoard(settings = {}) {
   return { ...settings, printerLabels };
 }
 
-function boardTickets(orders, bumps, settings = {}) {
+function startOfLocalDay(now) {
+  const date = new Date(now);
+  date.setHours(0, 0, 0, 0);
+  return date.getTime();
+}
+
+function lookbackHoursValue(settings) {
+  return Math.min(72, Math.max(1, Number(settings && settings.lookbackHours) || 18));
+}
+
+function closedSince(settings = {}, now = Date.now()) {
+  if (settings.closedWindow === 'hours') return now - lookbackHoursValue(settings) * 60 * 60 * 1000;
+  return startOfLocalDay(now);
+}
+
+function orderLookbackHours(settings = {}, now = Date.now()) {
+  const hours = lookbackHoursValue(settings);
+  if (settings.closedWindow === 'hours') return hours;
+  const todayHours = Math.max(1, Math.ceil((now - startOfLocalDay(now)) / (60 * 60 * 1000)));
+  return Math.min(72, Math.max(hours, todayHours));
+}
+
+function boardTickets(orders, bumps, settings = {}, now = Date.now()) {
   const active = [];
   const closed = [];
   orders.forEach((order) => {
@@ -382,7 +410,7 @@ function boardTickets(orders, bumps, settings = {}) {
     const kitchenDone = order.kdsStatus ? stationDone(order, settings) : Boolean(order.kitchenDone);
     const reopened = Boolean(mark && (mark.status === 'reopened' || mark.reopened));
     const inClosed = bumped || ((registerClosed || kitchenDone) && !reopened);
-    const ticket = withDone(prepareTicket(order, inClosed ? { ...settings, stationFilter: '' } : settings), order, mark);
+    const ticket = withDone(prepareTicket(order, inClosed ? { ...settings, stationFilter: '' } : settings), order, mark, settings);
     if (inClosed) {
       closed.push({ ...ticket, bumped, registerClosed, kitchenDone, closedAt: closeTime(order, mark, settings) });
       return;
@@ -392,7 +420,25 @@ function boardTickets(orders, bumps, settings = {}) {
   });
   active.sort((a, b) => Number(a.held) - Number(b.held) || a.createdTime - b.createdTime);
   closed.sort((a, b) => b.createdTime - a.createdTime);
-  return { active, closed };
+  const windowed = settings.closedWindow === 'today' || settings.closedWindow === 'hours'
+    ? closed.filter((ticket) => (Number(ticket.closedAt) || Number(ticket.createdTime) || 0) >= closedSince(settings, now))
+    : closed;
+  return { active, closed: windowed };
+}
+
+function arrivedTicketIds(seen, orders, bumps, settings, primed) {
+  const board = boardTickets(orders || [], bumps || {}, settingsForBoard(settings || {}));
+  const active = board.active.map((ticket) => ticket.id);
+  const closed = board.closed.map((ticket) => ticket.id);
+  if (!primed) {
+    active.forEach((id) => seen.add(id));
+    closed.forEach((id) => seen.add(id));
+    return [];
+  }
+  const fresh = active.filter((id) => !seen.has(id));
+  active.forEach((id) => seen.add(id));
+  closed.forEach((id) => seen.add(id));
+  return fresh;
 }
 
 function tallySentence(rows) {
@@ -410,7 +456,10 @@ module.exports = {
   reconcileBumps,
   freezeClosedTimes,
   settingsForBoard,
+  closedSince,
+  orderLookbackHours,
   boardTickets,
+  arrivedTicketIds,
   formatCount,
   tallySentence,
   serviceTone,

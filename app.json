@@ -2,7 +2,7 @@
   "expo": {
     "name": "Better Clover KDS",
     "slug": "better-clover-kds",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "orientation": "default",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
@@ -26,7 +26,7 @@
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
-      "versionCode": 2
+      "versionCode": 4
     },
     "web": {
       "favicon": "./assets/favicon.png",
@@ -38,6 +38,17 @@
         "projectId": "ba18d953-da09-4cc5-b279-b10753370658"
       }
     },
-    "owner": "hadavand1979"
+    "owner": "hadavand1979",
+    "plugins": [
+      [
+        "expo-audio",
+        {
+          "microphonePermission": false,
+          "recordAudioAndroid": false,
+          "enableBackgroundPlayback": false,
+          "enableBackgroundRecording": false
+        }
+      ]
+    ]
   }
 }
