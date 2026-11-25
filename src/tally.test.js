@@ -154,6 +154,45 @@ test('Clover payloads group line items and skip refunded or fee lines', () => {
   );
 });
 
+test('a bar tab clock starts when the food reaches the kitchen', () => {
+  const opened = 1_000;
+  const sent = 50_000;
+  const stamped = normalizeOrder({
+    id: 'tab',
+    state: 'open',
+    title: '16 - Main Bar',
+    createdTime: opened,
+    lineItems: {
+      elements: [
+        { id: 'burger', name: 'Classic Burger', createdTime: opened, clientCreatedTime: sent },
+      ],
+    },
+  });
+  assert.equal(prepareTicket(stamped, {}).createdTime, sent);
+
+  const fired = applyKitchenStatus([
+    normalizeOrder({
+      id: 'tab2',
+      state: 'open',
+      title: 'Order 7DXA',
+      createdTime: opened,
+      lineItems: {
+        elements: [
+          { id: 'burger', name: 'Classic Burger', createdTime: opened, clientCreatedTime: opened, item: { tags: { elements: [{ name: 'KDS' }] } } },
+          { id: 'soda', name: 'Soda', createdTime: opened, clientCreatedTime: opened, item: { tags: { elements: [{ name: 'Bar' }] } } },
+        ],
+      },
+    }),
+  ], [
+    { orderId: 'tab2', lineItemId: 'soda', type: 'com.clover.kds.REQUESTED', createdTime: opened },
+    { orderId: 'tab2', lineItemId: 'burger', type: 'com.clover.kds.REQUESTED', createdTime: sent },
+    { orderId: 'tab2', lineItemId: 'burger', type: 'com.clover.kds.READY', createdTime: sent + 10_000 },
+  ]);
+  const ticket = prepareTicket(fired[0], { printerLabels: ['KDS'] });
+  assert.equal(ticket.createdTime, sent);
+  assert.equal(ticket.lines.some((line) => line.name === 'Soda'), false);
+});
+
 test('the clock starts when the kitchen items are added', () => {
   const order = normalizeOrder({
     id: 'TABLE201',

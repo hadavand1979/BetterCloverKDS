@@ -201,8 +201,22 @@ function visibleLines(order, settings = {}) {
   }, []);
 }
 
+function lineKitchenTime(line, order) {
+  const opened = Number(order.createdTime) || 0;
+  const status = order.kdsStatus && line.id ? order.kdsStatus[String(line.id)] : null;
+  const requestedAt = status && Number(status.requestedAt);
+  if (requestedAt) return requestedAt;
+  const created = Number(line.createdTime) || 0;
+  const client = Number(line.clientCreatedTime) || 0;
+  const afterOpen = [created, client].filter((time) => time > opened + 1500);
+  if (afterOpen.length) return Math.min(...afterOpen);
+  const any = [created, client].filter((time) => time > 0);
+  if (any.length) return Math.min(...any);
+  return opened;
+}
+
 function kitchenTime(order, lines) {
-  const times = (lines || []).map((line) => Number(line.createdTime) || 0).filter((time) => time > 0);
+  const times = (lines || []).map((line) => lineKitchenTime(line, order)).filter((time) => time > 0);
   if (times.length) return Math.min(...times);
   return Number(order.createdTime) || 0;
 }
@@ -251,8 +265,14 @@ function kitchenStatus(events) {
     if (!orderId || !lineId || (!ready && !requested)) return;
     const at = Number(event.createdTime || event.clientCreatedTime || 0);
     const key = `${orderId}:${lineId}`;
-    const prev = latest.get(key);
-    if (!prev || at >= prev.at) latest.set(key, { at, status: ready ? 'ready' : 'requested' });
+    const prev = latest.get(key) || { at: 0, status: '', requestedAt: 0 };
+    const next = { ...prev };
+    if (requested && at) next.requestedAt = next.requestedAt ? Math.min(next.requestedAt, at) : at;
+    if (!prev.at || at >= prev.at) {
+      next.at = at;
+      next.status = ready ? 'ready' : 'requested';
+    }
+    latest.set(key, next);
   });
   const byOrder = {};
   latest.forEach((value, key) => {
@@ -260,7 +280,7 @@ function kitchenStatus(events) {
     const orderId = key.slice(0, split);
     const lineId = key.slice(split + 1);
     if (!byOrder[orderId]) byOrder[orderId] = {};
-    byOrder[orderId][lineId] = { status: value.status, at: value.at };
+    byOrder[orderId][lineId] = { status: value.status, at: value.at, requestedAt: value.requestedAt || 0 };
   });
   return byOrder;
 }

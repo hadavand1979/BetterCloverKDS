@@ -364,6 +364,45 @@
     .footer-links { display: flex; gap: 22px; }
     .footer-links a { font-size: 14px; color: var(--dim); text-decoration: none; transition: color .2s; }
     .footer-links a:hover { color: var(--text); }
+
+    /* ── HELP ── */
+    .manual {
+      display: grid;
+      gap: 16px;
+      max-width: 760px;
+      margin: 0 auto;
+    }
+    .manual article {
+      background: var(--bg2);
+      border: 1px solid rgba(255,255,255,.06);
+      border-radius: var(--radius);
+      padding: 22px 24px;
+    }
+    .manual h3 { font-size: 18px; font-weight: 700; margin-bottom: 8px; }
+    .manual p, .manual li { color: var(--muted); font-size: 15px; line-height: 1.65; }
+    .manual p + p { margin-top: 10px; }
+    .manual ol, .manual ul { margin: 10px 0 0 18px; }
+    .manual li + li { margin-top: 6px; }
+    .manual figure { margin: 16px 0 0; }
+    .manual img {
+      width: 100%;
+      height: auto;
+      display: block;
+      border-radius: 12px;
+      border: 1px solid rgba(255,255,255,.08);
+      background: #0b0f14;
+    }
+    .manual figcaption { color: var(--dim); font-size: 13px; margin-top: 8px; }
+    .manual-shots {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 16px;
+      margin-top: 16px;
+    }
+    .manual-shots figure { margin: 0; }
+    @media (max-width: 640px) {
+      .manual-shots { grid-template-columns: minmax(0, 320px); justify-content: center; }
+    }
   </style>
 </head>
 <body>
@@ -378,6 +417,7 @@
     <ul class="nav-links">
       <li><a href="#features">Features</a></li>
       <li><a href="#preview">Preview</a></li>
+      <li><a href="#help">Help</a></li>
       <li><a href="#contact">Contact</a></li>
     </ul>
   </div>
@@ -443,7 +483,7 @@
     <div class="feature-card">
       <div class="ficon" style="background:rgba(239,68,68,.12);">⏱️</div>
       <h3>Clock starts with the food</h3>
-      <p>Drinks can open the check first. The timer starts when the kitchen items are rung in, then turns yellow at 5 minutes and red at 10.</p>
+      <p>A bar tab can stay open for hours. The timer starts when Clover sends the food to the kitchen, then turns yellow at 5 minutes and red at 10.</p>
     </div>
     <div class="feature-card">
       <div class="ficon" style="background:rgba(22,163,74,.12);">🏷️</div>
@@ -535,6 +575,76 @@
 
 <hr />
 
+<!-- HELP -->
+<section id="help" class="section">
+  <p class="section-label">Help</p>
+  <h2 class="section-title">How the kitchen screen works</h2>
+  <p class="section-sub">This is the same board on a phone, a tablet, and a kitchen monitor.</p>
+
+  <div class="manual">
+    <article>
+      <h3>The open board</h3>
+      <p>Open tickets are the checks still in the kitchen. Each ticket shows the table or order name, the server, and the items for this screen.</p>
+      <p>Tap an item to mark that item done. It stays on the ticket with a line through it and a green check. Tap it again to put it back. The rest of the ticket stays up.</p>
+    </article>
+    <article>
+      <h3>The clock</h3>
+      <p>The big time is how long the food has been in the kitchen. It starts when Clover sends those items to the kitchen, not when a bar tab was first opened. A tab can sit for hours and still show a short time when the food arrives.</p>
+      <p>The smaller time under it is when that clock started. The ticket turns yellow at 5 minutes and red at 10. Both can be changed in Settings.</p>
+      <figure>
+        <img src="help/board.png" alt="Kitchen board with a red Table 12 ticket, a yellow delivery ticket, a summary of burgers and fries, and Hold and Bump on each ticket." />
+        <figcaption>Table 12 is red after 12 minutes. Order 55 is yellow after 8. The summary on the left counts the checked ticket.</figcaption>
+      </figure>
+    </article>
+    <article>
+      <h3>The summary</h3>
+      <p>The summary counts what is still to make. The oldest open ticket is included on its own. Check the box on another ticket to add it. The counts combine. The last checked ticket stays checked.</p>
+      <p>An item marked done leaves the summary and the “On this ticket” count. Notes such as “NO onion” or “Medium” stay on the item and stay out of the summary.</p>
+      <p>Settings has “Include items under the main item.” On, nachos count the lettuce, tomato, and the other items under them. Off, the summary counts the nachos only. Save after changing it.</p>
+    </article>
+    <article>
+      <h3>Hold, bump, and closed</h3>
+      <p>Hold parks a ticket. Resume brings it back to the working list. Bump clears the whole ticket and moves it to Closed. The clock stops at the time it took.</p>
+      <p>Closed shows tickets from today, since midnight. Settings can switch that to a number of hours, which can include yesterday. Open a closed ticket and tap Make active to put it back on the board. That does not reopen a paid check in Clover.</p>
+      <div class="manual-shots">
+        <figure>
+          <img src="help/summary.png" alt="Phone screen with summary chips for burgers, chicken fingers, and steaks above a Table 12 ticket." />
+          <figcaption>On a phone, the summary sits in chips above the tickets.</figcaption>
+        </figure>
+        <figure>
+          <img src="help/ticket.png" alt="A to-go ticket for Maya with On this ticket counts, a Hold button, and a green Bump button." />
+          <figcaption>On this ticket counts that check. Hold parks it. Bump clears it.</figcaption>
+        </figure>
+      </div>
+    </article>
+    <article>
+      <h3>More than one screen</h3>
+      <p>One kitchen can use one server, with every screen pointed at it. Each screen keeps its own printer labels. Grill can show Grill items and Fry can show Fry items from the same orders.</p>
+      <p>Marking one item done is shared. Bump clears that ticket on every screen. A ticket with nothing for the labels on this screen does not appear here.</p>
+      <p>Without a server, each phone talks to Clover on its own. A bump on that phone stays on that phone.</p>
+    </article>
+    <article>
+      <h3>Sound</h3>
+      <p>Settings has “Chime when a new ticket arrives.” It stays off until it is turned on and saved. Turning it on plays the chime once. A new ticket with no items for this screen’s labels stays quiet.</p>
+      <p>Phones and tablets can also vibrate when a new ticket arrives.</p>
+    </article>
+    <article>
+      <h3>Connect Clover</h3>
+      <ol>
+        <li>Open Settings.</li>
+        <li>Choose Clover account.</li>
+        <li>Choose United States and Canada.</li>
+        <li>Enter the merchant ID and the access token. They stay on this device.</li>
+        <li>Select the printer labels this screen should show, or leave them all off to show every item.</li>
+        <li>Tap Save.</li>
+      </ol>
+      <p>The token needs Orders Read. To see the printer labels in Settings, it also needs Read inventory. Sample tickets stay available under Settings if Clover is not connected yet.</p>
+    </article>
+  </div>
+</section>
+
+<hr />
+
 <!-- CONTACT -->
 <section id="contact">
   <div class="contact-wrap">
@@ -554,6 +664,7 @@
   <div class="footer-inner">
     <p>© 2026 Better Clover KDS · Built by Ali Hadavand</p>
     <div class="footer-links">
+      <a href="#help">Help</a>
       <a href="privacy.html">Privacy Policy</a>
       <a href="mailto:hadavand1979@gmail.com">Contact</a>
     </div>

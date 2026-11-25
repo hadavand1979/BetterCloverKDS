@@ -68,7 +68,8 @@ function normalizeLine(line) {
     exchanged: flag(line.exchanged),
     unitName: line.unitName || '',
     unitQty: line.unitQty == null ? null : Number(line.unitQty),
-    createdTime: Number(line.createdTime || line.clientCreatedTime || 0),
+    createdTime: Number(line.createdTime || 0),
+    clientCreatedTime: Number(line.clientCreatedTime || 0),
     labels: labelNames(tagNames(line.item), tagNames(line), line.labels),
   };
 }
